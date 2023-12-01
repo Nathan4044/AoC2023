@@ -10,7 +10,6 @@ import (
 
 func main() {
     file, err := os.Open("../input.txt")
-    // file, err := os.Open("test.txt")
     defer file.Close()
 
     if err != nil {
