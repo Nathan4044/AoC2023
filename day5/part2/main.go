@@ -12,39 +12,21 @@ import (
 func main() {
 	sections := readInput()
 	seedRanges := parseSeeds(sections[0])
+	mapper := parseMap(sections[1:])
 
-	lowestLocation := math.MaxInt
-
-	ch := make(chan int)
+	lowest := math.MaxInt
 
 	for _, sr := range seedRanges {
-		go processSeed(sr, sections[1:], ch)
-	}
+		ranges := mapper.run(sr)
 
-	for range seedRanges {
-		loc := <-ch
-
-		if loc < lowestLocation {
-			lowestLocation = loc
+		for _, r := range ranges {
+			if r.start < lowest {
+				lowest = r.start
+			}
 		}
 	}
 
-	fmt.Printf("%d\n", lowestLocation)
-}
-
-func processSeed(r *seedRange, m []string, out chan int) {
-	mapper := parseMap(m)
-	lowest := mapper.run(r.start)
-
-	for i := 1; i < r.coverage; i++ {
-		loc := mapper.run(r.start + i)
-
-		if loc < lowest {
-			lowest = loc
-		}
-	}
-
-	out <- lowest
+	fmt.Printf("%d\n", lowest)
 }
 
 func readInput() []string {
@@ -149,10 +131,6 @@ func parseRange(str string) (*mapRange, error) {
 		nums = append(nums, n)
 	}
 
-	if len(nums) != 3 {
-		return nil, fmt.Errorf("wrong number of nums from line '%s': got %+v\n", str, nums)
-	}
-
 	mr := mapRange{
 		destination: nums[0],
 		source:      nums[1],
@@ -168,30 +146,96 @@ type mapRange struct {
 	coverage    int
 }
 
-func (m *mapRange) maps(n int) (int, bool) {
-	offset := n - m.source
+func (m *mapRange) lastSource() int {
+	return m.source + m.coverage - 1
+}
 
-	if 0 <= offset && offset < m.coverage {
-		return m.destination + offset, true
+func (m *mapRange) offset() int {
+	return m.destination - m.source
+}
+
+func (m *mapRange) maps(ranges []*seedRange) ([]*seedRange, []*seedRange) {
+	changed := []*seedRange{}
+	unchanged := []*seedRange{}
+
+	for _, sr := range ranges {
+		switch {
+		case sr.start >= m.source && sr.end() <= m.lastSource():
+			changed = append(changed, &seedRange{
+				start:    sr.start + m.offset(),
+				coverage: sr.coverage,
+			})
+		case sr.start >= m.source && sr.start <= m.lastSource():
+			insideCount := m.lastSource() - sr.start
+
+			innerRange := &seedRange{
+				start:    sr.start + m.offset(),
+				coverage: insideCount + 1,
+			}
+
+			outerRange := &seedRange{
+				start:    m.lastSource() + 1,
+				coverage: sr.coverage - insideCount - 1,
+			}
+
+			changed = append(changed, innerRange)
+			unchanged = append(unchanged, outerRange)
+		case sr.end() <= m.lastSource() && sr.end() >= m.source:
+			insideCount := sr.end() - m.source + 1
+
+			innerRange := &seedRange{
+				start:    sr.end() - insideCount + 1 + m.offset(),
+				coverage: insideCount,
+			}
+
+			outerRange := &seedRange{
+				start:    sr.start,
+				coverage: sr.coverage - insideCount,
+			}
+
+			changed = append(changed, innerRange)
+			unchanged = append(unchanged, outerRange)
+		default:
+			unchanged = append(unchanged, sr)
+		}
 	}
 
-	return 0, false
+	return changed, unchanged
 }
 
 type mapStage struct {
 	ranges []*mapRange
 }
 
-func (m *mapStage) convert(n int) int {
-	for _, mr := range m.ranges {
-		result, ok := mr.maps(n)
+func (m *mapStage) convert(sr []*seedRange) []*seedRange {
+	changed := []*seedRange{}
+	unchanged := sr
 
-		if ok {
-			return result
-		}
+	initialCoverage := 0
+
+	for _, r := range sr {
+		initialCoverage += r.coverage
 	}
 
-	return n
+	for _, mr := range m.ranges {
+		newChanged, newUnchanged := mr.maps(unchanged)
+		unchanged = newUnchanged
+		changed = append(changed, newChanged...)
+	}
+
+	changed = append(changed, unchanged...)
+
+	changedCoverage := 0
+
+	for _, r := range changed {
+		changedCoverage += r.coverage
+	}
+
+	if changedCoverage != initialCoverage {
+		log.Fatal("missing seeds!")
+	}
+
+	return changed
 }
 
 type mapper struct {
@@ -204,8 +248,8 @@ type mapper struct {
 	humidityToLocation    *mapStage
 }
 
-func (m *mapper) run(seed int) int {
-	soil := m.seedToSoil.convert(seed)
+func (m *mapper) run(sr *seedRange) []*seedRange {
+	soil := m.seedToSoil.convert([]*seedRange{sr})
 	fertilizer := m.soilToFertilizer.convert(soil)
 	water := m.fertilizerToWater.convert(fertilizer)
 	light := m.waterToLight.convert(water)
@@ -219,4 +263,8 @@ func (m *mapper) run(seed int) int {
 type seedRange struct {
 	start    int
 	coverage int
+}
+
+func (s *seedRange) end() int {
+	return s.start + s.coverage - 1
 }
