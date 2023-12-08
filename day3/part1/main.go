@@ -112,6 +112,7 @@ func getNumbers(lines []string) []number {
 
 func getLines() []string {
 	content, err := os.Open("../input.txt")
+    defer content.Close()
 
 	if err != nil {
 		log.Fatal(err)

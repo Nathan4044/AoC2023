@@ -57,6 +57,7 @@ func (t *ticket) process(tickets []ticket) {
 
 func parseInput() []ticket {
 	file, err := os.Open("../input.txt")
+    defer file.Close()
 
 	if err != nil {
 		log.Fatal(err)

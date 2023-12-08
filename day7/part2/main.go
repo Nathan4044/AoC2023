@@ -46,6 +46,7 @@ func main() {
 
 func parseInput() []*hand {
 	file, err := os.Open("../input.txt")
+    defer file.Close()
 
 	if err != nil {
 		log.Fatal(err)

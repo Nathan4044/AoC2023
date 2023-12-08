@@ -104,6 +104,7 @@ func parseLines(lines []string) ([]number, []symbol) {
 
 func getLines() []string {
 	content, err := os.Open("../input.txt")
+    defer content.Close()
 
 	if err != nil {
 		log.Fatal(err)
